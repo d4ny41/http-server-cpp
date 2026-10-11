@@ -1,3 +1,4 @@
+#include <cstddef>
 #include <cstdio>
 #include <iostream>
 #include <sys/socket.h>
@@ -5,6 +6,7 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <cstring>
+#include <string>
 
 int main(){
     int listeningSocket = socket(AF_INET, SOCK_STREAM, 0);
@@ -49,13 +51,52 @@ int main(){
             perror("Connection to client failed! \n");
             continue;
         }
+        std::string request_buffer;        
         int bytesRead;
-        char buffer[4096]; // dumb piece of memory holding down 5096 slots in the memory 
-        bytesRead = read(connection_socket, buffer, sizeof(buffer)-1);
-        if(bytesRead > 0){
-            buffer[bytesRead] = '\0'; // manually marking the end of the memory we just read as there could be more which will be fetched in the future iterations
-        std::cout << buffer << std::endl;
+
+        while(true){
+            char buffer[4096]; // dumb piece of memory holding down 5096 slots in the memory 
+            bytesRead = read(connection_socket, buffer, sizeof(buffer)-1);
+            if(bytesRead > 0){
+                buffer[bytesRead] = '\0'; // manually marking the end of the memory we just read as there could be more which will be fetched in the future iterations
+                request_buffer += buffer;
+                if(request_buffer.find("\r\n\r\n") != std::string::npos || request_buffer.length() > 8192){
+                    break;
+                }
+            }else{
+                break;
+            }
         }
+        if(request_buffer.empty()){
+            close(connection_socket);
+            continue;
+        }
+        size_t line_end = request_buffer.find("\r\n");
+        if(line_end == std::string::npos){
+            close(connection_socket);
+            continue;
+        }
+        std::string request_line = request_buffer.substr(0, line_end);
+        size_t first_space = request_line.find(' ');
+        if (first_space == std::string::npos) {
+            close(connection_socket);
+            continue;
+        }
+        size_t second_space = request_line.find(' ', first_space + 1);
+        if (second_space == std::string::npos) {
+            close(connection_socket);
+            continue;
+        }
+        // 4. Slicing out the three substrings
+        std::string method = request_line.substr(0, first_space);
+        std::string path = request_line.substr(first_space + 1, second_space - (first_space + 1));
+        std::string version = request_line.substr(second_space + 1);
+
+        // 5. Printing the parsed values to verify
+        std::cout << "Method: " << method << "\n"
+                  << "Path: " << path << "\n"
+                  << "Version: " << version << std::endl;
+
         std::string body = "Hello, Danyal speaking!"; // len = 23
         std::string response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 23\r\n\r\n" + body; // update to a dynamic response in the future
         write(connection_socket, response.c_str(), response.length());
