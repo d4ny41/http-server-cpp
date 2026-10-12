@@ -8,6 +8,8 @@
 #include <cstring>
 #include <string>
 #include <map>
+#include <fstream>
+
 
 int main(){
     int listeningSocket = socket(AF_INET, SOCK_STREAM, 0);
@@ -123,8 +125,38 @@ int main(){
     if (headers.count("Host")) {
       std::cout << "Host Header: " << headers["Host"] << std::endl;
     }
-        std::string body = "Hello, Danyal speaking!"; // len = 23
+    /*   std::string body = "Hello, Danyal speaking!"; // len = 23
         std::string response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 23\r\n\r\n" + body; // update to a dynamic response in the future
+    */ 
+    if (path == "/") {
+            path = "/index.html";
+        }
+
+        std::string file_path = "public" + path;
+        std::ifstream file(file_path);
+
+        std::string status_line;
+        std::string content_type = "text/html";
+        std::string body;
+
+        if (file.is_open()) {
+            status_line = "HTTP/1.1 200 OK\r\n";
+            std::string line;
+            while (std::getline(file, line)) {
+                body += line + "\n";
+            }
+            file.close();
+        } else {
+            status_line = "HTTP/1.1 404 Not Found\r\n";
+            body = "<!DOCTYPE html><html><body><h1>404 Not Found</h1>"
+                   "<p>The requested file does not exist.</p></body></html>";
+        }
+
+        std::string response = status_line +
+                               "Content-Type: " + content_type + "\r\n" +
+                               "Content-Length: " + std::to_string(body.length()) + "\r\n" +
+                               "\r\n" +
+                               body;
         write(connection_socket, response.c_str(), response.length());
         close(connection_socket);
     }
