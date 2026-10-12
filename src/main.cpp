@@ -132,26 +132,50 @@ int main(){
             path = "/index.html";
         }
 
-        std::string file_path = "public" + path;
-        std::ifstream file(file_path);
-
         std::string status_line;
         std::string content_type = "text/html";
         std::string body;
 
-        if (file.is_open()) {
-            status_line = "HTTP/1.1 200 OK\r\n";
-            std::string line;
-            while (std::getline(file, line)) {
-                body += line + "\n";
-            }
-            file.close();
+        // for security so '..' doesn't cause unix to go up one file and reject the request straight away
+        if (path.find("..") != std::string::npos) {
+            status_line = "HTTP/1.1 403 Forbidden\r\n";
+            body = "<!DOCTYPE html><html><body><h1>403 Forbidden</h1>"
+                   "<p>Access denied.</p></body></html>";
         } else {
-            status_line = "HTTP/1.1 404 Not Found\r\n";
-            body = "<!DOCTYPE html><html><body><h1>404 Not Found</h1>"
-                   "<p>The requested file does not exist.</p></body></html>";
-        }
+            std::string file_path = "public" + path;
 
+            // Open the file in binary mode and jump to the end to calculate the exact byte size
+            std::ifstream file(file_path, std::ios::binary | std::ios::ate);
+
+            if (file.is_open()) {
+                status_line = "HTTP/1.1 200 OK\r\n";
+
+                // Search right to left to figure out the file type '.' whatever
+                size_t dot_pos = file_path.rfind('.');
+                if (dot_pos != std::string::npos) {
+                    std::string ext = file_path.substr(dot_pos);
+                    if (ext == ".html") content_type = "text/html";
+                    else if (ext == ".css") content_type = "text/css";
+                    else if (ext == ".js") content_type = "application/javascript";
+                    else if (ext == ".png") content_type = "image/png";
+                    else if (ext == ".jpg" || ext == ".jpeg") content_type = "image/jpeg";
+                    else if (ext == ".ico") content_type = "image/x-icon";
+                    else content_type = "text/plain";
+                }
+
+                // calculate number of bytes and allocate memory
+                std::streamsize size = file.tellg();
+                file.seekg(0, std::ios::beg);
+                body.resize(size);
+                file.read(&body[0], size);
+                file.close();
+            } else {
+                status_line = "HTTP/1.1 404 Not Found\r\n";
+                body = "<!DOCTYPE html><html><body><h1>404 Not Found</h1>"
+                       "<p>The requested file does not exist.</p></body></html>";
+            }
+        }
+        // put the http responce packet back together
         std::string response = status_line +
                                "Content-Type: " + content_type + "\r\n" +
                                "Content-Length: " + std::to_string(body.length()) + "\r\n" +
