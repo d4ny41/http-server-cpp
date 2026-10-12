@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <cstring>
 #include <string>
+#include <map>
 
 int main(){
     int listeningSocket = socket(AF_INET, SOCK_STREAM, 0);
@@ -87,16 +88,41 @@ int main(){
             close(connection_socket);
             continue;
         }
-        // 4. Slicing out the three substrings
+        //  Slicing out the three substrings
         std::string method = request_line.substr(0, first_space);
         std::string path = request_line.substr(first_space + 1, second_space - (first_space + 1));
         std::string version = request_line.substr(second_space + 1);
 
-        // 5. Printing the parsed values to verify
+        // Printing the parsed values to verify
         std::cout << "Method: " << method << "\n"
                   << "Path: " << path << "\n"
                   << "Version: " << version << std::endl;
+        // headers are parsed one line at a time into a key value map
+    std::map<std::string, std::string> headers;
+    size_t pos = line_end + 2; // Start right after the first "\r\n"
 
+    while (pos < request_buffer.length()) {
+      size_t next_line = request_buffer.find("\r\n", pos);
+      // If next_line doesn't havea position, we hit the empty line
+      if (next_line == std::string::npos || next_line == pos) {
+        break;
+      }
+      std::string header_line = request_buffer.substr(pos, next_line - pos);
+      size_t colon = header_line.find(':');
+     
+      if (colon != std::string::npos) {
+        std::string key = header_line.substr(0, colon);
+        std::string value = header_line.substr(colon + 2); // Skip ": "
+        headers[key] = value;
+      }
+
+      pos = next_line + 2; // Jump past "\r\n" to the next header line
+    }
+
+    // only for verification, remove bevore git committing 
+    if (headers.count("Host")) {
+      std::cout << "Host Header: " << headers["Host"] << std::endl;
+    }
         std::string body = "Hello, Danyal speaking!"; // len = 23
         std::string response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 23\r\n\r\n" + body; // update to a dynamic response in the future
         write(connection_socket, response.c_str(), response.length());
