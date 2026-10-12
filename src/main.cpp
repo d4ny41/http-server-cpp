@@ -9,8 +9,12 @@
 #include <string>
 #include <map>
 #include <fstream>
+#include <thread>
 
 
+void handle_client(int connection_socket){
+    
+}
 int main(){
     int listeningSocket = socket(AF_INET, SOCK_STREAM, 0);
     if(listeningSocket == -1){
@@ -125,32 +129,61 @@ int main(){
     if (headers.count("Host")) {
       std::cout << "Host Header: " << headers["Host"] << std::endl;
     }
+
+    std::string request_body;        
+    size_t header_end = request_buffer.find("\r\n\r\n");
+    if (header_end != std::string::npos) {
+        request_body = request_buffer.substr(header_end + 4);
+    }
+    // Check if the client sent a "Content-Length" header telling us and calculate how many byts to expext
+        if (headers.count("Content-Length")) {
+            // std::stoul converts a string into an unsigned integer (size_t)
+            size_t content_length = std::stoul(headers["Content-Length"]);
+
+        // If TCP split the request and we haven't received all body bytes yet,
+        while (request_body.length() < content_length) {
+            char buffer[4096];
+            bytesRead = read(connection_socket, buffer, sizeof(buffer) - 1);
+            if (bytesRead > 0) {
+                buffer[bytesRead] = '\0';
+                request_body += buffer;
+            } else {
+                break; // Client disconnected or error
+            }
+        }
+    }
     /*   std::string body = "Hello, Danyal speaking!"; // len = 23
         std::string response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 23\r\n\r\n" + body; // update to a dynamic response in the future
     */ 
-    if (path == "/") {
+    std::string status_line;
+    std::string content_type = "text/html";
+    std::string body;
+    if (method == "POST") {
+        // Print the incoming payload in the server terminal
+        std::cout << "POST Payload Received: " << request_body << std::endl;
+
+        status_line = "HTTP/1.1 200 OK\r\n";
+        body = "<!DOCTYPE html><html><head><link rel=\"stylesheet\" href=\"/style.css\"></head>"
+               "<body><h1>POST Data Received!</h1>"
+               "<p>Your server captured: <strong>" + request_body + "</strong></p>"
+               "<a href=\"/\" style=\"color: #00ffcc;\">Go back</a></body></html>";
+
+    } else if (method == "GET") {
+        if (path == "/") {
             path = "/index.html";
         }
 
-        std::string status_line;
-        std::string content_type = "text/html";
-        std::string body;
-
-        // for security so '..' doesn't cause unix to go up one file and reject the request straight away
         if (path.find("..") != std::string::npos) {
             status_line = "HTTP/1.1 403 Forbidden\r\n";
             body = "<!DOCTYPE html><html><body><h1>403 Forbidden</h1>"
                    "<p>Access denied.</p></body></html>";
         } else {
             std::string file_path = "public" + path;
-
-            // Open the file in binary mode and jump to the end to calculate the exact byte size
             std::ifstream file(file_path, std::ios::binary | std::ios::ate);
 
             if (file.is_open()) {
                 status_line = "HTTP/1.1 200 OK\r\n";
 
-                // Search right to left to figure out the file type '.' whatever
                 size_t dot_pos = file_path.rfind('.');
                 if (dot_pos != std::string::npos) {
                     std::string ext = file_path.substr(dot_pos);
@@ -163,7 +196,6 @@ int main(){
                     else content_type = "text/plain";
                 }
 
-                // calculate number of bytes and allocate memory
                 std::streamsize size = file.tellg();
                 file.seekg(0, std::ios::beg);
                 body.resize(size);
@@ -175,7 +207,11 @@ int main(){
                        "<p>The requested file does not exist.</p></body></html>";
             }
         }
-        // put the http responce packet back together
+    } else {
+        // Reject unsupported jttp methods 
+        status_line = "HTTP/1.1 405 Method Not Allowed\r\n";
+        body = "<!DOCTYPE html><html><body><h1>405 Method Not Allowed</h1></body></html>";
+    }
         std::string response = status_line +
                                "Content-Type: " + content_type + "\r\n" +
                                "Content-Length: " + std::to_string(body.length()) + "\r\n" +
